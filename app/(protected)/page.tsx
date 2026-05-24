@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react'
 import { UserButton } from '@clerk/nextjs'
 import { LinhaFrete } from '@/types/frete'
 import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
+import { getCoeficientes, TIPOS_CARGA } from '@/lib/antt'
 import { salvarCotacao } from '@/lib/actions/cotacao'
 import { salvarCorrecaoPedagio } from '@/lib/actions/correcao'
 import { compararProvedores } from '@/lib/actions/comparar'
@@ -50,6 +51,18 @@ function labelFonte(fonte?: ProviderFonte): string {
     estimativa: 'Estimativa',
   }
   return labels[fonte]
+}
+
+function calcularResumo(linhas: LinhaFrete[]) {
+  const total = linhas.filter(l => l.status === 'ok').length
+  const porFonte: Record<string, number> = {}
+  const porConfianca: Record<string, number> = { alta: 0, media: 0, baixa: 0 }
+  for (const l of linhas) {
+    if (l.status !== 'ok') continue
+    if (l.fonte) porFonte[l.fonte] = (porFonte[l.fonte] ?? 0) + 1
+    if (l.confianca) porConfianca[l.confianca] = (porConfianca[l.confianca] ?? 0) + 1
+  }
+  return { total, porFonte, porConfianca }
 }
 
 function parseModeloIA(rows: Record<string, string | number>[]): LinhaFrete[] {
@@ -326,7 +339,7 @@ export default function Home() {
                   onClick={exportar}
                   className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-5 py-2 rounded transition"
                 >
-                  Exportar Excel
+                  Exportar Excel (Tabela + Verificação ANTT)
                 </button>
               )}
 
@@ -342,6 +355,28 @@ export default function Home() {
             {erro && <p className="mt-3 text-sm text-red-400">{erro}</p>}
           </div>
         )}
+
+        {status === 'pronto' && (() => {
+          const resumo = calcularResumo(linhas)
+          const FONTE_LABELS_UI: Record<string, string> = {
+            here: 'HERE', tomtom: 'TomTom', 'rotas-brasil': 'Rotas Brasil',
+            'banco-proprio': 'Banco Próprio', estimativa: 'Estimativa',
+          }
+          return (
+            <div className="bg-gray-900 border border-gray-700 rounded-xl px-5 py-3 flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-green-400 font-medium">✓ {resumo.total} {resumo.total === 1 ? 'rota calculada' : 'rotas calculadas'}</span>
+              {Object.entries(resumo.porFonte).map(([fonte, n]) => (
+                <span key={fonte} className="text-gray-400">
+                  {FONTE_LABELS_UI[fonte] ?? fonte}: <span className="text-gray-200">{n}</span>
+                </span>
+              ))}
+              <span className="text-gray-600">·</span>
+              {resumo.porConfianca.alta > 0 && <span className="text-green-500 text-xs">Alta: {resumo.porConfianca.alta}</span>}
+              {resumo.porConfianca.media > 0 && <span className="text-yellow-500 text-xs">Média: {resumo.porConfianca.media}</span>}
+              {resumo.porConfianca.baixa > 0 && <span className="text-red-500 text-xs">Baixa: {resumo.porConfianca.baixa}</span>}
+            </div>
+          )
+        })()}
 
         {linhas.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -405,7 +440,11 @@ export default function Home() {
                           <td className="px-4 py-3 text-right font-semibold text-white">{formatBRL(linha.freteTotal)}</td>
                           <td className="px-4 py-3 text-center">
                             {linha.status === 'ok' && <span className="inline-block w-2 h-2 rounded-full bg-green-500" />}
-                            {linha.status === 'erro' && <span className="text-red-400 text-xs" title={linha.erro}>erro</span>}
+                            {linha.status === 'erro' && (
+                              <span className="text-red-400 text-xs" title={linha.erro}>
+                                {linha.erro ? `erro: ${linha.erro.slice(0, 35)}` : 'erro'}
+                              </span>
+                            )}
                             {linha.status === 'pendente' && <span className="inline-block w-2 h-2 rounded-full bg-gray-600" />}
                             {linha.status === 'calculando' && <span className="animate-spin inline-block w-3 h-3 border border-blue-400 border-t-transparent rounded-full" />}
                           </td>
@@ -584,6 +623,24 @@ export default function Home() {
                                   })}
                                 </tbody>
                               </table>
+
+                              {/* Fórmula ANTT */}
+                              {linha.km && (() => {
+                                const tipoCarga = linha.tipoCarga ?? 'carga_geral'
+                                const coef = getCoeficientes(linha.eixos, false, false, tipoCarga)
+                                if (!coef) return null
+                                const anttVal = Math.round((linha.km * coef.ccd + coef.cc) * 100) / 100
+                                return (
+                                  <div className="mt-4 pt-3 border-t border-gray-800">
+                                    <p className="text-xs text-gray-500 font-medium mb-1">
+                                      Fórmula ANTT — {linha.eixos} eixos · Simples · {TIPOS_CARGA[tipoCarga] ?? tipoCarga}
+                                    </p>
+                                    <p className="text-xs text-gray-400 font-mono">
+                                      {coef.ccd.toFixed(4)} × {linha.km} km + {coef.cc.toFixed(2)} = {formatBRL(anttVal)}
+                                    </p>
+                                  </div>
+                                )
+                              })()}
                             </td>
                           </tr>
                         )}
