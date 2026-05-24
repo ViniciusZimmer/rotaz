@@ -7,11 +7,16 @@ const delay = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function processarLinha(linha: LinhaFrete): Promise<LinhaFrete> {
   try {
-    const { km, pedagio, fonte, confianca, pracas } = await calcularRotaComChain(
+    // Chamada 1: eixo=4 → pedágio não-composição (Truck, Bitruck)
+    const { km, pedagio: pedagioNaoComposicao, fonte, confianca, pracas } = await calcularRotaComChain(
       linha.origem,
       linha.destino,
-      6  // referência eixo=6 — mesmo comportamento anterior
+      4
     )
+
+    // Chamada 2: eixo=6 → pedágio composição (Carreta Simples, Truckada, Rodotrem)
+    await delay(1000)
+    const { pedagio } = await calcularRotaComChain(linha.origem, linha.destino, 6)
 
     const antt = calcularANTT(km, {
       eixos: linha.eixos,
@@ -24,6 +29,7 @@ async function processarLinha(linha: LinhaFrete): Promise<LinhaFrete> {
     const variacaoCompleta: LinhaVariacao[] = []
     for (const e of EIXOS_LISTA) {
       for (const composicaoVeicular of [false, true]) {
+        const pedagioVar = composicaoVeicular ? pedagio : pedagioNaoComposicao
         for (const altoDesempenho of [false, true]) {
           const anttVar = calcularANTT(km, {
             eixos: e,
@@ -37,9 +43,9 @@ async function processarLinha(linha: LinhaFrete): Promise<LinhaFrete> {
             composicaoVeicular,
             altoDesempenho,
             km,
-            pedagio,
+            pedagio: pedagioVar,
             antt: anttVar,
-            freteTotal: Math.round((pedagio + anttVar) * 100) / 100,
+            freteTotal: Math.round((pedagioVar + anttVar) * 100) / 100,
           })
         }
       }
@@ -49,6 +55,7 @@ async function processarLinha(linha: LinhaFrete): Promise<LinhaFrete> {
       ...linha,
       km,
       pedagio,
+      pedagioNaoComposicao,
       antt,
       freteTotal,
       variacaoCompleta,

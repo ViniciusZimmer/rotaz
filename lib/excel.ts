@@ -31,7 +31,7 @@ export function gerarExcelPorVeiculo(linhas: LinhaFrete[]): Buffer {
 
     rows.push([
       'Cidade', 'UF', 'Cidade', 'UF', 'Eixos',
-      'ANTT Sem AD', 'ANTT Com AD', 'Pedágio (ref. 6 eixos)', 'Total Sem AD', 'Total Com AD',
+      'ANTT Sem AD', 'ANTT Com AD', 'Pedágio', 'Total Sem AD', 'Total Com AD',
     ])
 
     for (const linha of linhas) {
@@ -56,7 +56,9 @@ export function gerarExcelPorVeiculo(linhas: LinhaFrete[]): Buffer {
         v => v.eixos === veiculo.eixos && v.composicaoVeicular === veiculo.composicao && v.altoDesempenho
       )
 
-      const pedagio = linha.pedagio ?? 0
+      const pedagio = veiculo.composicao
+        ? (linha.pedagio ?? 0)
+        : (linha.pedagioNaoComposicao ?? linha.pedagio ?? 0)
       const anttSem = semAD?.antt ?? 0
       const anttCom = comAD?.antt ?? 0
 

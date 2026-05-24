@@ -20,6 +20,7 @@ export interface LinhaFrete {
   composicaoVeicular?: boolean
   km?: number
   pedagio?: number
+  pedagioNaoComposicao?: number
   antt?: number
   freteTotal?: number
   status?: 'pendente' | 'calculando' | 'ok' | 'erro'
