@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useRef } from 'react'
-import { UserButton } from '@clerk/nextjs'
 import { LinhaFrete } from '@/types/frete'
 import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
 import { getCoeficientes, TIPOS_CARGA } from '@/lib/antt'
@@ -9,14 +8,6 @@ import { salvarCotacao } from '@/lib/actions/cotacao'
 import { salvarCorrecaoPedagio } from '@/lib/actions/correcao'
 import { compararProvedores } from '@/lib/actions/comparar'
 import { useProviderSettings } from '@/hooks/useProviderSettings'
-
-// banco-proprio is not included here — it's an internal read-only source, not selectable for comparison
-const PROVIDER_OPTIONS: { fonte: ProviderFonte; label: string }[] = [
-  { fonte: 'here', label: 'HERE Maps' },
-  { fonte: 'tomtom', label: 'TomTom' },
-  { fonte: 'rotas-brasil', label: 'Rotas Brasil' },
-  { fonte: 'estimativa', label: 'Estimativa (Haversine)' },
-]
 
 type StatusGlobal = 'idle' | 'calculando' | 'pronto'
 type FormatoExcel = 'padrao' | 'modeloIA'
@@ -109,10 +100,10 @@ export default function Home() {
   const [corrigindo, setCorrigindo] = useState<number | null>(null)
   const [valorCorrigido, setValorCorrigido] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-  const [settingsAberto, setSettingsAberto] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [comparando, setComparando] = useState(false)
   const [progressoComparacao, setProgressoComparacao] = useState(0)
-  const { settings, toggle, activeProviders } = useProviderSettings()
+  const { activeProviders } = useProviderSettings()
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -177,6 +168,24 @@ export default function Home() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  function onDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(true)
+  }
+
+  function onDragLeave() {
+    setDragging(false)
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    const fakeEvent = { target: { files: [file] } } as unknown as React.ChangeEvent<HTMLInputElement>
+    await onUpload(fakeEvent)
+  }
+
   async function comparar() {
     if (!linhas.length || !activeProviders.length) return
     setComparando(true)
@@ -209,84 +218,65 @@ export default function Home() {
   const temCliente = linhas.some((l) => l.cliente)
 
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-100">
-      <div className="border-b border-gray-800 bg-gray-900 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Calculadora de Frete</h1>
-          <p className="text-sm text-gray-400 mt-0.5">KM · Pedágio · ANTT automático</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <a
-            href="/validacao"
-            className="text-sm text-purple-400 hover:text-purple-300 border border-purple-800 hover:border-purple-600 px-3 py-1.5 rounded transition"
-          >
-            Validar provedores
-          </a>
-          <a
-            href="/api/modelo"
-            className="text-sm text-blue-400 hover:text-blue-300 border border-blue-800 hover:border-blue-600 px-3 py-1.5 rounded transition"
-          >
-            Baixar modelo Excel
-          </a>
-          <div className="relative">
-            <button
-              onClick={() => setSettingsAberto(v => !v)}
-              className="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded transition"
-              title="Configurar provedores"
-            >
-              ⚙ Provedores
-            </button>
-            {settingsAberto && (
-              <div className="absolute right-0 top-full mt-2 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-4 z-10 min-w-[220px]">
-                <p className="text-xs text-gray-500 font-medium mb-3">Provedores ativos</p>
-                {PROVIDER_OPTIONS.map(({ fonte, label }) => (
-                  <label key={fonte} className="flex items-center gap-2 cursor-pointer py-1">
-                    <input
-                      type="checkbox"
-                      checked={!!settings[fonte]}
-                      onChange={() => toggle(fonte)}
-                      className="rounded"
-                    />
-                    <span className="text-sm text-gray-300">{label}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
-          <UserButton />
-        </div>
-      </div>
+    <main className="min-h-screen text-slate-100">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-4">
 
-      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h2 className="text-sm font-medium text-gray-300 mb-4">1. Importar tabela</h2>
-          <div className="flex items-center gap-4 flex-wrap">
-            <label className="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white text-sm px-4 py-2 rounded transition">
-              Selecionar Excel
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={onUpload}
-              />
-            </label>
-            {linhas.length > 0 && (
-              <span className="text-sm text-gray-400">
-                {linhas.length} linhas
-                {clientes.length > 0 && ` · ${clientes.length} clientes`}
-                {formato === 'modeloIA' && (
-                  <span className="ml-2 text-blue-400 text-xs">formato IA</span>
-                )}
-              </span>
-            )}
-            {linhas.length > 0 && (
-              <button onClick={limpar} className="text-sm text-gray-500 hover:text-gray-300 transition">
-                Limpar
-              </button>
-            )}
+        {/* Upload zone */}
+        {linhas.length === 0 ? (
+          <div
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
+              dragging ? 'border-sky-500 bg-sky-500/5' : 'border-gray-700 hover:border-gray-600 bg-gray-900/50'
+            }`}
+          >
+            <div className="flex flex-col items-center gap-3">
+              <svg className="w-10 h-10 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              <div>
+                <p className="text-slate-300 font-medium">Arraste o Excel aqui</p>
+                <p className="text-slate-500 text-sm mt-0.5">ou clique para selecionar</p>
+              </div>
+              <label className="cursor-pointer mt-1 bg-sky-600 hover:bg-sky-500 text-white text-sm px-4 py-2 rounded transition-colors">
+                Selecionar arquivo
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onUpload} />
+              </label>
+              <div className="flex items-center gap-3 mt-2">
+                <button
+                  onClick={() => setFormato('padrao')}
+                  className={`text-xs px-3 py-1 rounded border transition-colors ${formato === 'padrao' ? 'border-sky-600 text-sky-400 bg-sky-600/10' : 'border-gray-700 text-slate-500 hover:border-gray-600'}`}
+                >
+                  Formato padrão
+                </button>
+                <button
+                  onClick={() => setFormato('modeloIA')}
+                  className={`text-xs px-3 py-1 rounded border transition-colors ${formato === 'modeloIA' ? 'border-sky-600 text-sky-400 bg-sky-600/10' : 'border-gray-700 text-slate-500 hover:border-gray-600'}`}
+                >
+                  Formato IA
+                </button>
+              </div>
+              <a href="/api/modelo" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mt-1">
+                Baixar modelo Excel →
+              </a>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 flex items-center gap-3">
+            <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+            </svg>
+            <span className="text-sm text-slate-300 flex-1">
+              {linhas.length} {linhas.length === 1 ? 'rota' : 'rotas'}
+              {clientes.length > 0 && ` · ${clientes.length} ${clientes.length === 1 ? 'cliente' : 'clientes'}`}
+              {formato === 'modeloIA' && <span className="ml-2 text-sky-400 text-xs">formato IA</span>}
+            </span>
+            <button onClick={limpar} className="text-xs text-slate-600 hover:text-slate-400 transition-colors">
+              Limpar
+            </button>
+          </div>
+        )}
 
         {linhas.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
