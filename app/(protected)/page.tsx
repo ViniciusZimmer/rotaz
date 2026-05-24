@@ -56,6 +56,24 @@ function calcularResumo(linhas: LinhaFrete[]) {
   return { total, porFonte, porConfianca }
 }
 
+function fonteCorClass(fonte?: ProviderFonte): string {
+  if (!fonte) return 'text-slate-500'
+  if (fonte === 'estimativa') return 'text-amber-400'
+  if (fonte === 'banco-proprio') return 'text-green-400'
+  return 'text-sky-400'
+}
+
+function divergeRow(linha: LinhaFrete): boolean {
+  if (!linha.comparacao) return false
+  const vals = (Object.values(linha.comparacao) as ComparacaoResult[keyof ComparacaoResult][])
+    .filter((r): r is RotaResult => !!r && 'km' in r && (r as RotaResult).pedagio > 0)
+    .map(r => r.pedagio)
+  if (vals.length < 2) return false
+  const min = Math.min(...vals)
+  const max = Math.max(...vals)
+  return min > 0 && (max - min) / min > 0.10
+}
+
 function parseModeloIA(rows: Record<string, string | number>[]): LinhaFrete[] {
   const dados = String(rows[0]?.['Origem'] ?? '').toLowerCase() === 'cidade' ? rows.slice(1) : rows
 
@@ -403,7 +421,7 @@ export default function Home() {
                     return (
                       <React.Fragment key={i}>
                         <tr
-                          className={`transition hover:bg-gray-800/50 ${linha.variacaoCompleta ? 'cursor-pointer' : ''}`}
+                          className={`transition hover:bg-gray-800/50 ${linha.variacaoCompleta ? 'cursor-pointer' : ''} ${divergeRow(linha) ? 'bg-amber-900/10' : ''}`}
                           onClick={() => linha.variacaoCompleta && setExpandido(aberto ? null : i)}
                         >
                           {temCliente && (
@@ -417,20 +435,27 @@ export default function Home() {
                               <span className="ml-1 text-gray-600 text-xs">{aberto ? '▲' : '▼'}</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-300">
-                            {linha.km ? `${linha.km} km` : '-'}
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-300">
+                            {linha.km ? `${Math.round(linha.km)} km` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-300">{formatBRL(linha.pedagio)}</td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-300">
+                            {linha.pedagio === 0
+                              ? <span className="text-amber-400 text-xs">⚠ sem dados</span>
+                              : formatBRL(linha.pedagio)
+                            }
+                          </td>
                           <td className="px-4 py-3">
                             {linha.fonte && (
                               <div className="flex flex-col gap-1">
-                                <span className="text-xs text-gray-500">{labelFonte(linha.fonte)}</span>
+                                <span className={`text-xs font-medium ${fonteCorClass(linha.fonte)}`}>
+                                  ● {labelFonte(linha.fonte)}
+                                </span>
                                 {badgeConfianca(linha.confianca as Confianca)}
                               </div>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right text-gray-300">{formatBRL(linha.antt)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-white">{formatBRL(linha.freteTotal)}</td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-slate-300">{formatBRL(linha.antt)}</td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-slate-100">{formatBRL(linha.freteTotal)}</td>
                           <td className="px-4 py-3 text-center">
                             {linha.status === 'ok' && <span className="inline-block w-2 h-2 rounded-full bg-green-500" />}
                             {linha.status === 'erro' && (
