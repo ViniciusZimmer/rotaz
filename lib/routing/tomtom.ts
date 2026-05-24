@@ -27,7 +27,7 @@ export class TomTomProvider implements RoutingProvider {
       `https://api.tomtom.com/routing/1/calculateRoute/` +
       `${orig.lat},${orig.lng}:${dest.lat},${dest.lng}/json` +
       `?vehicleCommercial=true` +
-      `&vehicleAxles=${eixos}` +
+      `&vehicleNumberOfAxles=${eixos}` +
       `&routeType=fastest` +
       `&traffic=false` +
       `&key=${this.apiKey}`
