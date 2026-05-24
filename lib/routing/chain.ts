@@ -10,7 +10,7 @@ const TOMTOM = new TomTomProvider()
 const ROTAS_BRASIL = new RotasBrasilProvider()
 const HAVERSINE = new HaversineProvider()
 
-const ALL_PROVIDERS = {
+export const ALL_PROVIDERS = {
   here: HERE,
   tomtom: TOMTOM,
   'rotas-brasil': ROTAS_BRASIL,
