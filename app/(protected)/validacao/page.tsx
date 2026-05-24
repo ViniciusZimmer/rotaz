@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
 import { compararProvedores } from '@/lib/actions/comparar'
 import { useProviderSettings } from '@/hooks/useProviderSettings'
+import { CIDADES_BRASIL } from '@/lib/cidades'
 
 type Confianca = 'alta' | 'media' | 'baixa'
 
@@ -236,15 +237,18 @@ export default function ValidacaoPage() {
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <p className="text-xs font-medium uppercase tracking-widest text-slate-500 mb-4">Rota para comparar</p>
+          <datalist id="cidades-br">
+            {CIDADES_BRASIL.map(c => <option key={c} value={c} />)}
+          </datalist>
           <form onSubmit={comparar} className="flex flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500">Origem</label>
-              <input type="text" value={origem} onChange={e => setOrigem(e.target.value)} placeholder="São Paulo, SP" required
+              <input type="text" value={origem} onChange={e => setOrigem(e.target.value)} placeholder="São Paulo, SP" required list="cidades-br"
                 className="px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 w-52 transition-colors" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500">Destino</label>
-              <input type="text" value={destino} onChange={e => setDestino(e.target.value)} placeholder="Curitiba, PR" required
+              <input type="text" value={destino} onChange={e => setDestino(e.target.value)} placeholder="Curitiba, PR" required list="cidades-br"
                 className="px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded text-slate-100 placeholder-slate-600 focus:outline-none focus:border-sky-500 w-52 transition-colors" />
             </div>
             <div className="flex flex-col gap-1">
