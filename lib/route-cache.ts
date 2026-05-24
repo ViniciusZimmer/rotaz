@@ -10,7 +10,7 @@ interface CacheEntry {
   pedagio: number
   pracas?: PracaResult[]
   fonte: string
-  confianca: string
+  confianca?: string
   cachedAt: number
 }
 
