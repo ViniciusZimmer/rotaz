@@ -278,73 +278,76 @@ export default function Home() {
           </div>
         )}
 
-        {linhas.length > 0 && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <h2 className="text-sm font-medium text-gray-300 mb-4">2. Calcular</h2>
-            <div className="flex items-center gap-4 flex-wrap mb-4">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <div
-                  onClick={() => setComposicaoVeicular(v => !v)}
-                  className={`relative w-10 h-5 rounded-full transition-colors ${composicaoVeicular ? 'bg-blue-600' : 'bg-gray-600'}`}
-                >
-                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${composicaoVeicular ? 'translate-x-5' : 'translate-x-0'}`} />
-                </div>
-                <span className="text-sm text-gray-300">Composição Veicular</span>
-                {composicaoVeicular && <span className="text-xs text-blue-400">Tabela B</span>}
-              </label>
-            </div>
-            <div className="flex items-center gap-4 flex-wrap">
-              <button
-                onClick={calcular}
-                disabled={status === 'calculando'}
-                className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-5 py-2 rounded transition flex items-center gap-2"
+        {/* Action bar */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-2 cursor-pointer select-none mr-2">
+              <div
+                onClick={() => setComposicaoVeicular(v => !v)}
+                className={`relative w-9 h-5 rounded-full transition-colors ${composicaoVeicular ? 'bg-sky-500' : 'bg-gray-700'}`}
               >
-                {status === 'calculando' ? (
-                  <>
-                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
-                    Calculando...
-                  </>
-                ) : (
-                  'Calcular KM · Pedágio · ANTT'
-                )}
-              </button>
+                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${composicaoVeicular ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+              <span className="text-sm text-slate-400">Composição Veicular</span>
+              {composicaoVeicular && <span className="text-xs text-sky-400">Tabela B</span>}
+            </label>
 
+            <div className="w-px h-5 bg-gray-700 hidden sm:block" />
+
+            <button
+              onClick={calcular}
+              disabled={!linhas.length || status === 'calculando'}
+              title={!linhas.length ? 'Faça upload de um Excel primeiro' : undefined}
+              className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm px-5 py-2 rounded transition-colors flex items-center gap-2"
+            >
+              {status === 'calculando' ? (
+                <>
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                  Calculando…
+                </>
+              ) : (
+                'Calcular KM · Pedágio · ANTT'
+              )}
+            </button>
+
+            <button
+              onClick={comparar}
+              disabled={!linhas.length || comparando || !activeProviders.length}
+              title={
+                !linhas.length ? 'Faça upload de um Excel primeiro'
+                : !activeProviders.length ? 'Ative provedores em Configurações'
+                : undefined
+              }
+              className="bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 text-sm px-5 py-2 rounded transition-colors flex items-center gap-2"
+            >
+              {comparando ? (
+                <>
+                  <span className="animate-spin inline-block w-3 h-3 border-2 border-slate-300 border-t-transparent rounded-full" />
+                  Comparando {progressoComparacao}/{linhas.length}…
+                </>
+              ) : (
+                `Comparar provedores${activeProviders.length > 0 ? ` (${activeProviders.length})` : ''}`
+              )}
+            </button>
+
+            {status === 'pronto' && (
               <button
-                onClick={comparar}
-                disabled={comparando || !linhas.length || !activeProviders.length}
-                className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-5 py-2 rounded transition flex items-center gap-2"
+                onClick={exportar}
+                className="bg-gray-800 hover:bg-gray-700 text-slate-300 text-sm px-5 py-2 rounded transition-colors border border-gray-700 hover:border-gray-600"
               >
-                {comparando ? (
-                  <>
-                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
-                    Comparando rota {progressoComparacao}/{linhas.length}…
-                  </>
-                ) : (
-                  `Comparar provedores${activeProviders.length > 0 ? ` (${activeProviders.length})` : ''}`
-                )}
+                Exportar Excel ↓
               </button>
+            )}
 
-              {status === 'pronto' && (
-                <button
-                  onClick={exportar}
-                  className="bg-gray-700 hover:bg-gray-600 text-white text-sm px-5 py-2 rounded transition"
-                >
-                  Exportar Excel (Tabela + Verificação ANTT)
-                </button>
-              )}
-
-              {status === 'pronto' && (
-                <span className="text-sm text-gray-400">
-                  <span className="text-green-400">{totalOk} ok</span>
-                  {totalErro > 0 && (
-                    <span className="text-red-400 ml-2">{totalErro} com erro</span>
-                  )}
-                </span>
-              )}
-            </div>
-            {erro && <p className="mt-3 text-sm text-red-400">{erro}</p>}
+            {status === 'pronto' && (
+              <span className="text-sm text-slate-500 ml-auto">
+                <span className="text-green-400">{totalOk} ok</span>
+                {totalErro > 0 && <span className="text-red-400 ml-2">{totalErro} erro{totalErro > 1 ? 's' : ''}</span>}
+              </span>
+            )}
           </div>
-        )}
+          {erro && <p className="mt-3 text-sm text-red-400">{erro}</p>}
+        </div>
 
         {status === 'pronto' && (() => {
           const resumo = calcularResumo(linhas)
