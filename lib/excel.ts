@@ -1,173 +1,100 @@
 import * as XLSX from 'xlsx'
 import { LinhaFrete } from '@/types/frete'
-import { getCoeficientes, TIPOS_CARGA } from './antt'
 
-const EIXOS = [2, 3, 4, 5, 6, 7, 9]
-
-const VARIANTES = [
-  { label: 'Simples',        composicao: false, alto: false },
-  { label: 'Simples + AD',   composicao: false, alto: true  },
-  { label: 'Composição',     composicao: true,  alto: false },
-  { label: 'Comp. + AD',     composicao: true,  alto: true  },
+const VEICULOS = [
+  { nome: 'Truck',             eixos: 3, composicao: false, header: 'TRUCK (3 Eixos — Simples)' },
+  { nome: 'Bitruck',           eixos: 4, composicao: false, header: 'BITRUCK (4 Eixos — Simples)' },
+  { nome: 'Carreta Simples',   eixos: 5, composicao: true,  header: 'CARRETA SIMPLES (5 Eixos — Composição)' },
+  { nome: 'Carreta Truckada',  eixos: 6, composicao: true,  header: 'CARRETA TRUCKADA (6 Eixos — Composição)' },
+  { nome: 'Rodotrem',          eixos: 9, composicao: true,  header: 'RODOTREM (9 Eixos — Composição)' },
 ]
 
-const FONTE_LABELS: Record<string, string> = {
-  here: 'HERE',
-  tomtom: 'TomTom',
-  'rotas-brasil': 'Rotas Brasil',
-  'banco-proprio': 'Banco Próprio',
-  estimativa: 'Estimativa',
+function splitCidadeUF(valor: string): [string, string] {
+  const idx = valor.lastIndexOf(', ')
+  if (idx === -1) return [valor, '']
+  return [valor.slice(0, idx), valor.slice(idx + 2)]
 }
 
-const CONFIANCA_LABELS: Record<string, string> = {
-  alta: '● Alta',
-  media: '● Média',
-  baixa: '● Baixa',
-}
+export function gerarExcelPorVeiculo(linhas: LinhaFrete[]): Buffer {
+  const wb = XLSX.utils.book_new()
 
-function brl(valor: number | undefined): string {
-  if (valor == null) return '-'
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+  for (const veiculo of VEICULOS) {
+    const rows: (string | number)[][] = []
+    const merges: XLSX.Range[] = []
 
-function buildGrade(
-  rows: (string | number)[][],
-  merges: XLSX.Range[],
-  linha: LinhaFrete
-) {
-  const r = rows.length
+    rows.push([veiculo.header, '', '', '', '', '', '', '', '', ''])
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } })
 
-  const fonteStr = linha.fonte
-    ? ` | ${FONTE_LABELS[linha.fonte] ?? linha.fonte}${linha.confianca ? ' ' + (CONFIANCA_LABELS[linha.confianca] ?? '') : ''}`
-    : ''
-  const data = new Date().toLocaleDateString('pt-BR')
-  const header = `${linha.origem}  →  ${linha.destino}${linha.cliente ? `  |  ${linha.cliente}` : ''}  ·  ${linha.km ?? '?'} km  ·  Pedágio ref. 6 eixos: ${brl(linha.pedagio)}${fonteStr}  ·  ${data}`
+    rows.push(['Origem', '', 'Destino', '', '', '', '', '', '', ''])
+    merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: 1 } })
+    merges.push({ s: { r: 1, c: 2 }, e: { r: 1, c: 3 } })
 
-  rows.push([header, '', '', '', ''])
-  rows.push(['Eixos (ANTT)', 'Simples', 'Simples + AD', 'Composição', 'Comp. + AD'])
+    rows.push([
+      'Cidade', 'UF', 'Cidade', 'UF', 'Eixos',
+      'ANTT Sem AD', 'ANTT Com AD', 'Pedágio (ref. 6 eixos)', 'Total Sem AD', 'Total Com AD',
+    ])
 
-  if (linha.variacaoCompleta?.length) {
-    for (const e of EIXOS) {
-      const itens = VARIANTES.map(v =>
-        linha.variacaoCompleta!.find(x => x.eixos === e && x.composicaoVeicular === v.composicao && x.altoDesempenho === v.alto)
-      )
-      rows.push([`${e} eixos`, ...itens.map(x => x?.antt ?? '-')])
-    }
-  } else {
-    rows.push([linha.erro ? `ERRO: ${linha.erro}` : 'Sem dados'])
-  }
+    for (const linha of linhas) {
+      const origemParts = splitCidadeUF(linha.origem)
+      const destinoParts = splitCidadeUF(linha.destino)
 
-  rows.push([])
-  merges.push({ s: { r, c: 0 }, e: { r, c: 4 } })
-}
-
-function buildVerificacao(linhas: LinhaFrete[]): (string | number)[][] {
-  const headers = [
-    'Origem', 'Destino', 'KM', 'Eixos', 'Composição', 'Alto Desempenho',
-    'Tipo Carga', 'CCD', 'CC', 'Fórmula', 'ANTT Calculado',
-  ]
-  const rows: (string | number)[][] = [headers]
-
-  const VARIANTES_VER = [
-    { label: 'Simples',      composicao: false, alto: false },
-    { label: 'Simples + AD', composicao: false, alto: true  },
-    { label: 'Composição',   composicao: true,  alto: false },
-    { label: 'Comp. + AD',   composicao: true,  alto: true  },
-  ]
-
-  for (const l of linhas) {
-    if (!l.variacaoCompleta?.length || !l.km) continue
-    const tipoCarga = l.tipoCarga ?? 'carga_geral'
-    const tipoCargaLabel = TIPOS_CARGA[tipoCarga]
-
-    for (const e of EIXOS) {
-      for (const v of VARIANTES_VER) {
-        const coef = getCoeficientes(e, v.composicao, v.alto, tipoCarga)
-        if (!coef) continue
-        const antt = Math.round((l.km * coef.ccd + coef.cc) * 100) / 100
-        const formula = `${coef.ccd.toFixed(4)} × ${l.km} + ${coef.cc.toFixed(2)}`
+      if (linha.erro) {
         rows.push([
-          l.origem,
-          l.destino,
-          l.km,
-          e,
-          v.composicao ? 'Sim' : 'Não',
-          v.alto ? 'Sim' : 'Não',
-          tipoCargaLabel,
-          coef.ccd,
-          coef.cc,
-          formula,
-          antt,
+          origemParts[0], origemParts[1],
+          destinoParts[0], destinoParts[1],
+          veiculo.eixos,
+          `ERRO: ${linha.erro}`, `ERRO: ${linha.erro}`,
+          `ERRO: ${linha.erro}`, `ERRO: ${linha.erro}`, `ERRO: ${linha.erro}`,
         ])
+        continue
       }
+
+      const semAD = linha.variacaoCompleta?.find(
+        v => v.eixos === veiculo.eixos && v.composicaoVeicular === veiculo.composicao && !v.altoDesempenho
+      )
+      const comAD = linha.variacaoCompleta?.find(
+        v => v.eixos === veiculo.eixos && v.composicaoVeicular === veiculo.composicao && v.altoDesempenho
+      )
+
+      const pedagio = linha.pedagio ?? 0
+      const anttSem = semAD?.antt ?? 0
+      const anttCom = comAD?.antt ?? 0
+
+      rows.push([
+        origemParts[0], origemParts[1],
+        destinoParts[0], destinoParts[1],
+        veiculo.eixos,
+        anttSem || '-',
+        anttCom || '-',
+        pedagio || '-',
+        anttSem && pedagio ? Math.round((anttSem + pedagio) * 100) / 100 : '-',
+        anttCom && pedagio ? Math.round((anttCom + pedagio) * 100) / 100 : '-',
+      ])
     }
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    ws['!merges'] = merges
+    ws['!cols'] = [
+      { wch: 28 }, { wch: 5  }, { wch: 28 }, { wch: 5  }, { wch: 6  },
+      { wch: 16 }, { wch: 16 }, { wch: 22 }, { wch: 16 }, { wch: 16 },
+    ]
+    XLSX.utils.book_append_sheet(wb, ws, veiculo.nome)
   }
 
-  return rows
-}
-
-const VER_COLS = [
-  { wch: 22 }, { wch: 22 }, { wch: 6  }, { wch: 6  }, { wch: 12 }, { wch: 16 },
-  { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 32 }, { wch: 16 },
-]
-
-// Formato padrão
-export function gerarExcel(linhas: LinhaFrete[]): Buffer {
-  const rows: (string | number)[][] = []
-  const merges: XLSX.Range[] = []
-
-  for (const l of linhas) {
-    buildGrade(rows, merges, l)
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!merges'] = merges
-  ws['!cols'] = [{ wch: 55 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }]
-
-  const verRows = buildVerificacao(linhas)
-  const wsVer = XLSX.utils.aoa_to_sheet(verRows)
-  wsVer['!cols'] = VER_COLS
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Tabela de Frete')
-  XLSX.utils.book_append_sheet(wb, wsVer, 'Verificação ANTT')
-  return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
-}
-
-// Formato Modelo IA
-export function gerarExcelModeloIA(linhas: LinhaFrete[]): Buffer {
-  const rows: (string | number)[][] = []
-  const merges: XLSX.Range[] = []
-
-  for (const l of linhas) {
-    buildGrade(rows, merges, l)
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!merges'] = merges
-  ws['!cols'] = [{ wch: 55 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }]
-
-  const verRows = buildVerificacao(linhas)
-  const wsVer = XLSX.utils.aoa_to_sheet(verRows)
-  wsVer['!cols'] = VER_COLS
-
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Tabela de Frete')
-  XLSX.utils.book_append_sheet(wb, wsVer, 'Verificação ANTT')
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
 }
 
 export function gerarExcelModelo(): Buffer {
-  const modelo = [
-    { Cliente: 'Empresa A', Origem: 'São Paulo/SP', Destino: 'Curitiba/PR',       UF: 'PR', Eixos: 6 },
-    { Cliente: 'Empresa A', Origem: 'São Paulo/SP', Destino: 'Porto Alegre/RS',   UF: 'RS', Eixos: 6 },
-    { Cliente: 'Empresa B', Origem: 'São Paulo/SP', Destino: 'Rio de Janeiro/RJ', UF: 'RJ', Eixos: 6 },
-    { Cliente: 'Empresa B', Origem: 'São Paulo/SP', Destino: 'Belo Horizonte/MG', UF: 'MG', Eixos: 6 },
-  ]
-
-  const ws = XLSX.utils.json_to_sheet(modelo)
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['Origem', 'Origem UF', 'Destino', 'Destino UF'],
+    ['São Paulo', 'SP', 'Curitiba', 'PR'],
+    ['São Paulo', 'SP', 'Porto Alegre', 'RS'],
+    ['São Paulo', 'SP', 'Florianópolis', 'SC'],
+    ['São Paulo', 'SP', 'Belo Horizonte', 'MG'],
+    ['São Paulo', 'SP', 'Rio de Janeiro', 'RJ'],
+  ])
+  ws['!cols'] = [{ wch: 24 }, { wch: 10 }, { wch: 24 }, { wch: 10 }]
   const wb = XLSX.utils.book_new()
-  ws['!cols'] = [{ wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 6 }, { wch: 6 }]
-  XLSX.utils.book_append_sheet(wb, ws, 'Tabela de Frete')
+  XLSX.utils.book_append_sheet(wb, ws, 'Rotas')
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }))
 }
