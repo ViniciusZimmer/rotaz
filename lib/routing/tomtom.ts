@@ -1,13 +1,13 @@
 import { RoutingProvider, RotaResult } from '@/types/routing'
 import { geocodeCidade } from './geocode'
 
-const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY ?? ''
-
 export class TomTomProvider implements RoutingProvider {
   nome = 'tomtom' as const
 
+  private get apiKey() { return process.env.TOMTOM_API_KEY ?? '' }
+
   isActive(): boolean {
-    return !!TOMTOM_API_KEY
+    return !!this.apiKey
   }
 
   async calcularRota(
@@ -15,7 +15,7 @@ export class TomTomProvider implements RoutingProvider {
     destino: string,
     eixos: number
   ): Promise<RotaResult> {
-    if (!TOMTOM_API_KEY) throw new Error('TOMTOM_API_KEY não configurada')
+    if (!this.apiKey) throw new Error('TOMTOM_API_KEY não configurada')
 
     const [orig, dest] = await Promise.all([
       geocodeCidade(origem),
@@ -30,7 +30,7 @@ export class TomTomProvider implements RoutingProvider {
       `&vehicleAxles=${eixos}` +
       `&routeType=fastest` +
       `&traffic=false` +
-      `&key=${TOMTOM_API_KEY}`
+      `&key=${this.apiKey}`
 
     const res = await fetch(url)
     if (!res.ok) throw new Error(`TomTom API HTTP ${res.status}`)

@@ -1,13 +1,13 @@
 import { RoutingProvider, RotaResult, PracaResult } from '@/types/routing'
 import { geocodeCidade } from './geocode'
 
-const HERE_API_KEY = process.env.HERE_API_KEY ?? ''
-
 export class HereProvider implements RoutingProvider {
   nome = 'here' as const
 
+  private get apiKey() { return process.env.HERE_API_KEY ?? '' }
+
   isActive(): boolean {
-    return !!HERE_API_KEY
+    return !!this.apiKey
   }
 
   async calcularRota(
@@ -15,7 +15,7 @@ export class HereProvider implements RoutingProvider {
     destino: string,
     eixos: number
   ): Promise<RotaResult> {
-    if (!HERE_API_KEY) throw new Error('HERE_API_KEY não configurada')
+    if (!this.apiKey) throw new Error('HERE_API_KEY não configurada')
 
     const [orig, dest] = await Promise.all([
       geocodeCidade(origem),
@@ -29,7 +29,7 @@ export class HereProvider implements RoutingProvider {
       destination: `${dest.lat},${dest.lng}`,
       'return': 'summary,tolls',
       'vehicle[axleCount]': String(eixos),
-      apikey: HERE_API_KEY,
+      apikey: this.apiKey,
     })
 
     const res = await fetch(`https://router.hereapi.com/v8/routes?${params}`)
@@ -44,12 +44,14 @@ export class HereProvider implements RoutingProvider {
     for (const section of sections) {
       totalMeters += section.summary?.length ?? 0
       for (const toll of section.tolls ?? []) {
-        const valor = toll.tollFare?.price ?? toll.fare?.summary?.totalAmount ?? 0
+        const valor = toll.fares?.reduce(
+          (sum: number, f: HereFare) => sum + (f.price?.value ?? 0), 0
+        ) ?? 0
         if (valor > 0) {
           pracas.push({
-            nome: toll.tollPlaza?.name ?? 'Praça sem nome',
+            nome: toll.tollCollectionLocations?.[0]?.name ?? toll.tollSystem ?? 'Praça sem nome',
             valor,
-            rodovia: toll.tollPlaza?.id,
+            rodovia: toll.tollSystem,
           })
         }
       }
@@ -68,11 +70,18 @@ export class HereProvider implements RoutingProvider {
   }
 }
 
+interface HereFare {
+  name?: string
+  price?: { type?: string; currency?: string; value?: number }
+  reason?: string
+}
+
 interface HereSection {
-  summary?: { length: number }
+  summary?: { length: number; duration?: number }
   tolls?: Array<{
-    tollPlaza?: { id?: string; name?: string }
-    tollFare?: { price?: number; currency?: string }
-    fare?: { summary?: { totalAmount?: number } }
+    countryCode?: string
+    tollSystem?: string
+    fares?: HereFare[]
+    tollCollectionLocations?: Array<{ name?: string; location?: { lat: number; lng: number } }>
   }>
 }
