@@ -1,0 +1,43 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String    @id
+  email     String    @unique
+  name      String?
+  createdAt DateTime  @default(now())
+  cotacoes  Cotacao[]
+}
+
+model Cotacao {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  createdAt   DateTime       @default(now())
+  formato     String
+  totalLinhas Int
+  linhas      LinhaCotacao[]
+}
+
+model LinhaCotacao {
+  id         String   @id @default(cuid())
+  cotacaoId  String
+  cotacao    Cotacao  @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+  cliente    String
+  origem     String
+  destino    String
+  uf         String
+  eixos      Int
+  km         Float?
+  pedagio    Float?
+  antt       Float?
+  freteTotal Float?
+  status     String
+  erro       String?
+}
