@@ -11,7 +11,6 @@ import { useSearchParams } from 'next/navigation'
 import { useProviderSettings } from '@/hooks/useProviderSettings'
 
 type StatusGlobal = 'idle' | 'calculando' | 'pronto'
-type FormatoExcel = 'padrao' | 'modeloIA'
 type Confianca = 'alta' | 'media' | 'baixa'
 
 function formatBRL(valor?: number) {
@@ -75,38 +74,24 @@ function divergeRow(linha: LinhaFrete): boolean {
   return min > 0 && (max - min) / min > 0.10
 }
 
-function parseModeloIA(rows: Record<string, string | number>[]): LinhaFrete[] {
-  const dados = String(rows[0]?.['Origem'] ?? '').toLowerCase() === 'cidade' ? rows.slice(1) : rows
-
-  return dados
-    .filter((row) => String(row['Origem'] ?? '').trim() !== '')
+function parsePorVeiculo(rows: Record<string, string | number>[]): LinhaFrete[] {
+  return rows
+    .filter(row => String(row['Origem'] ?? '').trim() !== '')
     .map((row): LinhaFrete => {
       const origemCidade = String(row['Origem'] ?? '').trim()
-      const origemUF = String(row['__EMPTY'] ?? '').trim()
-      const destRaw = String(row['Destino'] ?? '').trim()
-      const destUF = String(row['__EMPTY_1'] ?? '').trim()
-      const destCidade = destRaw.replace(/\s*-\s*[A-Z]{2}$/, '').trim()
+      const origemUF = String(row['Origem UF'] ?? '').trim()
+      const destCidade = String(row['Destino'] ?? '').trim()
+      const destUF = String(row['Destino UF'] ?? '').trim()
 
       return {
         cliente: '',
         origem: origemUF ? `${origemCidade}, ${origemUF}` : origemCidade,
         destino: destUF ? `${destCidade}, ${destUF}` : destCidade,
         uf: destUF,
-        eixos: Number(row['__EMPTY_2'] ?? 6),
+        eixos: 6,
         status: 'pendente',
       }
     })
-}
-
-function parsePadrao(rows: Record<string, string | number>[]): LinhaFrete[] {
-  return rows.map((row): LinhaFrete => ({
-    cliente: String(row['Cliente'] ?? row['cliente'] ?? ''),
-    origem: String(row['Origem'] ?? row['origem'] ?? ''),
-    destino: String(row['Destino'] ?? row['destino'] ?? ''),
-    uf: String(row['UF'] ?? row['uf'] ?? ''),
-    eixos: Number(row['Eixos'] ?? row['eixos'] ?? 2),
-    status: 'pendente',
-  }))
 }
 
 function SearchParamsReader({ onParams }: { onParams: (o: string, d: string, e: number) => void }) {
@@ -128,8 +113,6 @@ export default function Home() {
   const [linhas, setLinhas] = useState<LinhaFrete[]>([])
   const [status, setStatus] = useState<StatusGlobal>('idle')
   const [erro, setErro] = useState('')
-  const [formato, setFormato] = useState<FormatoExcel>('padrao')
-  const [composicaoVeicular, setComposicaoVeicular] = useState(false)
   const [expandido, setExpandido] = useState<number | null>(null)
   const [corrigindo, setCorrigindo] = useState<number | null>(null)
   const [valorCorrigido, setValorCorrigido] = useState('')
@@ -155,11 +138,7 @@ export default function Home() {
     const workbook = XLSX.read(buffer, { type: 'array' })
     const sheet = workbook.Sheets[workbook.SheetNames[0]]
     const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(sheet, { defval: '' })
-
-    const isModeloIA = rows.length > 0 && !('Cliente' in rows[0]) && !('cliente' in rows[0]) && 'Origem' in rows[0]
-
-    const parsed = isModeloIA ? parseModeloIA(rows) : parsePadrao(rows)
-    setFormato(isModeloIA ? 'modeloIA' : 'padrao')
+    const parsed = parsePorVeiculo(rows)
     setLinhas(parsed)
     setStatus('idle')
   }
@@ -173,12 +152,12 @@ export default function Home() {
       const res = await fetch('/api/calcular', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(linhas.map(l => ({ ...l, composicaoVeicular }))),
+        body: JSON.stringify(linhas),
       })
       const resultado: LinhaFrete[] = await res.json()
       setLinhas(resultado)
       setStatus('pronto')
-      salvarCotacao(resultado, formato).catch(console.error)
+      salvarCotacao(resultado, 'padrao').catch(console.error)
     } catch {
       setErro('Falha ao calcular. Tente novamente.')
       setStatus('idle')
@@ -189,13 +168,13 @@ export default function Home() {
     const res = await fetch('/api/exportar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ linhas, formato }),
+      body: JSON.stringify(linhas),
     })
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = formato === 'modeloIA' ? 'tabela_frete_preenchida.xlsx' : 'tabela_frete_calculada.xlsx'
+    a.download = 'tabela_frete.xlsx'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -204,7 +183,6 @@ export default function Home() {
     setLinhas([])
     setStatus('idle')
     setErro('')
-    setFormato('padrao')
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -252,10 +230,8 @@ export default function Home() {
     }
   }
 
-  const clientes = [...new Set(linhas.map((l) => l.cliente))].filter(Boolean)
   const totalOk = linhas.filter((l) => l.status === 'ok').length
   const totalErro = linhas.filter((l) => l.status === 'erro').length
-  const temCliente = linhas.some((l) => l.cliente)
 
   return (
     <main className="min-h-screen text-slate-100">
@@ -286,20 +262,6 @@ export default function Home() {
                 Selecionar arquivo
                 <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onUpload} />
               </label>
-              <div className="flex items-center gap-3 mt-2">
-                <button
-                  onClick={() => setFormato('padrao')}
-                  className={`text-xs px-3 py-1 rounded border transition-colors ${formato === 'padrao' ? 'border-sky-600 text-sky-400 bg-sky-600/10' : 'border-gray-700 text-slate-500 hover:border-gray-600'}`}
-                >
-                  Formato padrão
-                </button>
-                <button
-                  onClick={() => setFormato('modeloIA')}
-                  className={`text-xs px-3 py-1 rounded border transition-colors ${formato === 'modeloIA' ? 'border-sky-600 text-sky-400 bg-sky-600/10' : 'border-gray-700 text-slate-500 hover:border-gray-600'}`}
-                >
-                  Formato IA
-                </button>
-              </div>
               <a href="/api/modelo" className="text-xs text-slate-600 hover:text-slate-400 transition-colors mt-1">
                 Baixar modelo Excel →
               </a>
@@ -312,8 +274,6 @@ export default function Home() {
             </svg>
             <span className="text-sm text-slate-300 flex-1">
               {linhas.length} {linhas.length === 1 ? 'rota' : 'rotas'}
-              {clientes.length > 0 && ` · ${clientes.length} ${clientes.length === 1 ? 'cliente' : 'clientes'}`}
-              {formato === 'modeloIA' && <span className="ml-2 text-sky-400 text-xs">formato IA</span>}
             </span>
             <button onClick={limpar} className="text-xs text-slate-600 hover:text-slate-400 transition-colors">
               Limpar
@@ -324,19 +284,6 @@ export default function Home() {
         {/* Action bar */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4">
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-2 cursor-pointer select-none mr-2">
-              <div
-                onClick={() => setComposicaoVeicular(v => !v)}
-                className={`relative w-9 h-5 rounded-full transition-colors ${composicaoVeicular ? 'bg-sky-500' : 'bg-gray-700'}`}
-              >
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${composicaoVeicular ? 'translate-x-4' : 'translate-x-0'}`} />
-              </div>
-              <span className="text-sm text-slate-400">Composição Veicular</span>
-              {composicaoVeicular && <span className="text-xs text-sky-400">Tabela B</span>}
-            </label>
-
-            <div className="w-px h-5 bg-gray-700 hidden sm:block" />
-
             <button
               onClick={calcular}
               disabled={!linhas.length || status === 'calculando'}
@@ -420,7 +367,6 @@ export default function Home() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-800 text-gray-400 text-left">
-                    {temCliente && <th className="px-4 py-3 font-medium">Cliente</th>}
                     <th className="px-4 py-3 font-medium">Origem</th>
                     <th className="px-4 py-3 font-medium">Destino</th>
                     <th className="px-4 py-3 font-medium">Eixos</th>
@@ -435,7 +381,7 @@ export default function Home() {
                 <tbody className="divide-y divide-gray-800">
                   {linhas.map((linha, i) => {
                     const aberto = expandido === i
-                    const cols = temCliente ? 10 : 9
+                    const cols = 9
                     const eixosList = [2, 3, 4, 5, 6, 7, 9]
                     const colunas = [
                       { label: 'Simples',       composicao: false, alto: false },
@@ -449,9 +395,6 @@ export default function Home() {
                           className={`transition hover:bg-gray-800/50 ${linha.variacaoCompleta ? 'cursor-pointer' : ''} ${divergeRow(linha) ? 'bg-amber-900/10' : ''}`}
                           onClick={() => linha.variacaoCompleta && setExpandido(aberto ? null : i)}
                         >
-                          {temCliente && (
-                            <td className="px-4 py-3 text-gray-200 font-medium">{linha.cliente}</td>
-                          )}
                           <td className="px-4 py-3 text-gray-400">{linha.origem}</td>
                           <td className="px-4 py-3 text-gray-400">{linha.destino}</td>
                           <td className="px-4 py-3 text-gray-400">
