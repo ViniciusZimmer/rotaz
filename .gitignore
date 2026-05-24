@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# cache de rotas (distância + pedágio)
+.route-cache.json
+
+/lib/generated/prisma
+
+# Claude Code — user-specific settings
+.claude/settings.local.json
+skills-lock.json
+
+# Uploads do usuário (não fazem parte do codebase)
+public/MOdelo*
