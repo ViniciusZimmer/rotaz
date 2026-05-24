@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Calculadora de Frete",
-  description: "KM · Pedágio · ANTT automático",
+  title: "Rotaz — Calculadora",
+  description: "Calcule rotas. Feche fretes.",
 };
 
 export default function RootLayout({
