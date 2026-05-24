@@ -23,3 +23,6 @@ export interface RoutingProvider {
   nome: ProviderFonte
   calcularRota(origem: string, destino: string, eixos: number): Promise<RotaResult>
 }
+
+export type ComparacaoItem = RotaResult | { error: string }
+export type ComparacaoResult = Partial<Record<ProviderFonte, ComparacaoItem>>

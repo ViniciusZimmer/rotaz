@@ -1,4 +1,4 @@
-import { ProviderFonte, PracaResult } from './routing'
+import { ProviderFonte, PracaResult, ComparacaoResult } from './routing'
 
 export type TipoCarga =
   | 'carga_geral'
@@ -27,6 +27,7 @@ export interface LinhaFrete {
   fonte?: ProviderFonte
   confianca?: 'alta' | 'media' | 'baixa'
   pracas?: PracaResult[]
+  comparacao?: ComparacaoResult
   variacaoCompleta?: LinhaVariacao[]
 }
 
