@@ -9,6 +9,7 @@ import { salvarCorrecaoPedagio } from '@/lib/actions/correcao'
 import { compararProvedores } from '@/lib/actions/comparar'
 import { useProviderSettings } from '@/hooks/useProviderSettings'
 
+// banco-proprio is not included here — it's an internal read-only source, not selectable for comparison
 const PROVIDER_OPTIONS: { fonte: ProviderFonte; label: string }[] = [
   { fonte: 'here', label: 'HERE Maps' },
   { fonte: 'tomtom', label: 'TomTom' },
@@ -168,22 +169,25 @@ export default function Home() {
     setComparando(true)
     setProgressoComparacao(0)
     const atualizadas = [...linhas]
-    for (let i = 0; i < atualizadas.length; i++) {
-      setProgressoComparacao(i + 1)
-      const l = atualizadas[i]
-      if (!l.origem || !l.destino) continue
-      try {
-        const resultado = await compararProvedores(l.origem, l.destino, l.eixos, activeProviders)
-        atualizadas[i] = { ...l, comparacao: resultado }
-      } catch (err) {
-        console.warn(`[comparar] linha ${i} falhou:`, err)
+    try {
+      for (let i = 0; i < atualizadas.length; i++) {
+        setProgressoComparacao(i + 1)
+        const l = atualizadas[i]
+        if (!l.origem || !l.destino) continue
+        try {
+          const resultado = await compararProvedores(l.origem, l.destino, l.eixos, activeProviders)
+          atualizadas[i] = { ...l, comparacao: resultado }
+        } catch (err) {
+          console.warn(`[comparar] linha ${i} falhou:`, err)
+        }
+        if (i < atualizadas.length - 1) {
+          await new Promise(r => setTimeout(r, 1000))
+        }
       }
-      if (i < atualizadas.length - 1) {
-        await new Promise(r => setTimeout(r, 1000))
-      }
+      setLinhas(atualizadas)
+    } finally {
+      setComparando(false)
     }
-    setLinhas(atualizadas)
-    setComparando(false)
   }
 
   const clientes = [...new Set(linhas.map((l) => l.cliente))].filter(Boolean)
