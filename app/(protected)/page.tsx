@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react'
 import { UserButton } from '@clerk/nextjs'
 import { LinhaFrete } from '@/types/frete'
+import { salvarCotacao } from '@/lib/actions/cotacao'
 
 type StatusGlobal = 'idle' | 'calculando' | 'pronto'
 type FormatoExcel = 'padrao' | 'modeloIA'
@@ -88,6 +89,7 @@ export default function Home() {
       const resultado: LinhaFrete[] = await res.json()
       setLinhas(resultado)
       setStatus('pronto')
+      salvarCotacao(resultado, formato).catch(console.error)
     } catch {
       setErro('Falha ao calcular. Tente novamente.')
       setStatus('idle')
