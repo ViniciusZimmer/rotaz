@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect, Suspense } from 'react'
 import { LinhaFrete } from '@/types/frete'
 import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
 import { getCoeficientes, TIPOS_CARGA } from '@/lib/antt'
 import { salvarCotacao } from '@/lib/actions/cotacao'
 import { salvarCorrecaoPedagio } from '@/lib/actions/correcao'
 import { compararProvedores } from '@/lib/actions/comparar'
+import { useSearchParams } from 'next/navigation'
 import { useProviderSettings } from '@/hooks/useProviderSettings'
 
 type StatusGlobal = 'idle' | 'calculando' | 'pronto'
@@ -108,6 +109,21 @@ function parsePadrao(rows: Record<string, string | number>[]): LinhaFrete[] {
   }))
 }
 
+function SearchParamsReader({ onParams }: { onParams: (o: string, d: string, e: number) => void }) {
+  const params = useSearchParams()
+  useEffect(() => {
+    const o = params.get('origem')
+    const d = params.get('destino')
+    const e = Number(params.get('eixos') ?? 6)
+    if (o && d) {
+      onParams(o, d, e)
+      window.history.replaceState(null, '', '/')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return null
+}
+
 export default function Home() {
   const [linhas, setLinhas] = useState<LinhaFrete[]>([])
   const [status, setStatus] = useState<StatusGlobal>('idle')
@@ -123,6 +139,11 @@ export default function Home() {
   const [comparando, setComparando] = useState(false)
   const [progressoComparacao, setProgressoComparacao] = useState(0)
   const { activeProviders } = useProviderSettings()
+
+  function handleQueryParams(origem: string, destino: string, eixos: number) {
+    setLinhas([{ cliente: '', origem, destino, uf: '', eixos, status: 'pendente' }])
+    setStatus('idle')
+  }
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -239,6 +260,9 @@ export default function Home() {
   return (
     <main className="min-h-screen text-slate-100">
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-4">
+        <Suspense fallback={null}>
+          <SearchParamsReader onParams={handleQueryParams} />
+        </Suspense>
 
         {/* Upload zone */}
         {linhas.length === 0 ? (
