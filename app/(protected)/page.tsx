@@ -3,14 +3,52 @@
 import React, { useState, useRef } from 'react'
 import { UserButton } from '@clerk/nextjs'
 import { LinhaFrete } from '@/types/frete'
+import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
 import { salvarCotacao } from '@/lib/actions/cotacao'
+import { salvarCorrecaoPedagio } from '@/lib/actions/correcao'
+import { compararProvedores } from '@/lib/actions/comparar'
+import { useProviderSettings } from '@/hooks/useProviderSettings'
+
+const PROVIDER_OPTIONS: { fonte: ProviderFonte; label: string }[] = [
+  { fonte: 'here', label: 'HERE Maps' },
+  { fonte: 'tomtom', label: 'TomTom' },
+  { fonte: 'rotas-brasil', label: 'Rotas Brasil' },
+  { fonte: 'estimativa', label: 'Estimativa (Haversine)' },
+]
 
 type StatusGlobal = 'idle' | 'calculando' | 'pronto'
 type FormatoExcel = 'padrao' | 'modeloIA'
+type Confianca = 'alta' | 'media' | 'baixa'
 
 function formatBRL(valor?: number) {
   if (valor == null) return '-'
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function badgeConfianca(confianca?: Confianca) {
+  if (!confianca) return null
+  const cfg = {
+    alta:  { cor: 'bg-green-600',  label: '● Alta' },
+    media: { cor: 'bg-yellow-600', label: '● Média' },
+    baixa: { cor: 'bg-red-700',    label: '● Baixa' },
+  }[confianca]
+  return (
+    <span className={`inline-flex items-center text-xs text-white px-1.5 py-0.5 rounded ${cfg.cor}`}>
+      {cfg.label}
+    </span>
+  )
+}
+
+function labelFonte(fonte?: ProviderFonte): string {
+  if (!fonte) return ''
+  const labels: Record<ProviderFonte, string> = {
+    here: 'HERE',
+    tomtom: 'TomTom',
+    'rotas-brasil': 'Rotas Brasil',
+    'banco-proprio': 'Banco Próprio',
+    estimativa: 'Estimativa',
+  }
+  return labels[fonte]
 }
 
 function parseModeloIA(rows: Record<string, string | number>[]): LinhaFrete[] {
@@ -54,7 +92,13 @@ export default function Home() {
   const [formato, setFormato] = useState<FormatoExcel>('padrao')
   const [composicaoVeicular, setComposicaoVeicular] = useState(false)
   const [expandido, setExpandido] = useState<number | null>(null)
+  const [corrigindo, setCorrigindo] = useState<number | null>(null)
+  const [valorCorrigido, setValorCorrigido] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [settingsAberto, setSettingsAberto] = useState(false)
+  const [comparando, setComparando] = useState(false)
+  const [progressoComparacao, setProgressoComparacao] = useState(0)
+  const { settings, toggle, activeProviders } = useProviderSettings()
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -119,6 +163,29 @@ export default function Home() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  async function comparar() {
+    if (!linhas.length || !activeProviders.length) return
+    setComparando(true)
+    setProgressoComparacao(0)
+    const atualizadas = [...linhas]
+    for (let i = 0; i < atualizadas.length; i++) {
+      setProgressoComparacao(i + 1)
+      const l = atualizadas[i]
+      if (!l.origem || !l.destino) continue
+      try {
+        const resultado = await compararProvedores(l.origem, l.destino, l.eixos, activeProviders)
+        atualizadas[i] = { ...l, comparacao: resultado }
+      } catch (err) {
+        console.warn(`[comparar] linha ${i} falhou:`, err)
+      }
+      if (i < atualizadas.length - 1) {
+        await new Promise(r => setTimeout(r, 1000))
+      }
+    }
+    setLinhas(atualizadas)
+    setComparando(false)
+  }
+
   const clientes = [...new Set(linhas.map((l) => l.cliente))].filter(Boolean)
   const totalOk = linhas.filter((l) => l.status === 'ok').length
   const totalErro = linhas.filter((l) => l.status === 'erro').length
@@ -133,11 +200,42 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/validacao"
+            className="text-sm text-purple-400 hover:text-purple-300 border border-purple-800 hover:border-purple-600 px-3 py-1.5 rounded transition"
+          >
+            Validar provedores
+          </a>
+          <a
             href="/api/modelo"
             className="text-sm text-blue-400 hover:text-blue-300 border border-blue-800 hover:border-blue-600 px-3 py-1.5 rounded transition"
           >
             Baixar modelo Excel
           </a>
+          <div className="relative">
+            <button
+              onClick={() => setSettingsAberto(v => !v)}
+              className="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-500 px-3 py-1.5 rounded transition"
+              title="Configurar provedores"
+            >
+              ⚙ Provedores
+            </button>
+            {settingsAberto && (
+              <div className="absolute right-0 top-full mt-2 bg-gray-900 border border-gray-700 rounded-xl shadow-xl p-4 z-10 min-w-[220px]">
+                <p className="text-xs text-gray-500 font-medium mb-3">Provedores ativos</p>
+                {PROVIDER_OPTIONS.map(({ fonte, label }) => (
+                  <label key={fonte} className="flex items-center gap-2 cursor-pointer py-1">
+                    <input
+                      type="checkbox"
+                      checked={!!settings[fonte]}
+                      onChange={() => toggle(fonte)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-300">{label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <UserButton />
         </div>
       </div>
@@ -204,6 +302,21 @@ export default function Home() {
                 )}
               </button>
 
+              <button
+                onClick={comparar}
+                disabled={comparando || !linhas.length || !activeProviders.length}
+                className="bg-purple-700 hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm px-5 py-2 rounded transition flex items-center gap-2"
+              >
+                {comparando ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                    Comparando rota {progressoComparacao}/{linhas.length}…
+                  </>
+                ) : (
+                  `Comparar provedores${activeProviders.length > 0 ? ` (${activeProviders.length})` : ''}`
+                )}
+              </button>
+
               {status === 'pronto' && (
                 <button
                   onClick={exportar}
@@ -238,6 +351,7 @@ export default function Home() {
                     <th className="px-4 py-3 font-medium">Eixos</th>
                     <th className="px-4 py-3 font-medium text-right">KM</th>
                     <th className="px-4 py-3 font-medium text-right">Pedágio</th>
+                    <th className="px-4 py-3 font-medium">Fonte</th>
                     <th className="px-4 py-3 font-medium text-right">ANTT</th>
                     <th className="px-4 py-3 font-medium text-right">Frete Total</th>
                     <th className="px-4 py-3 font-medium text-center">Status</th>
@@ -246,7 +360,7 @@ export default function Home() {
                 <tbody className="divide-y divide-gray-800">
                   {linhas.map((linha, i) => {
                     const aberto = expandido === i
-                    const cols = temCliente ? 9 : 8
+                    const cols = temCliente ? 10 : 9
                     const eixosList = [2, 3, 4, 5, 6, 7, 9]
                     const colunas = [
                       { label: 'Simples',       composicao: false, alto: false },
@@ -275,6 +389,14 @@ export default function Home() {
                             {linha.km ? `${linha.km} km` : '-'}
                           </td>
                           <td className="px-4 py-3 text-right text-gray-300">{formatBRL(linha.pedagio)}</td>
+                          <td className="px-4 py-3">
+                            {linha.fonte && (
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs text-gray-500">{labelFonte(linha.fonte)}</span>
+                                {badgeConfianca(linha.confianca as Confianca)}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-4 py-3 text-right text-gray-300">{formatBRL(linha.antt)}</td>
                           <td className="px-4 py-3 text-right font-semibold text-white">{formatBRL(linha.freteTotal)}</td>
                           <td className="px-4 py-3 text-center">
@@ -288,9 +410,148 @@ export default function Home() {
                         {aberto && linha.variacaoCompleta && (
                           <tr key={`${i}-detail`} className="bg-gray-800/20">
                             <td colSpan={cols} className="px-6 py-4 overflow-x-auto">
-                              <p className="text-xs text-gray-500 mb-3">
+
+                              {/* Breakdown de praças */}
+                              {linha.pracas && linha.pracas.length > 0 && (
+                                <div className="mb-4">
+                                  <p className="text-xs text-gray-500 font-medium mb-2">
+                                    Praças cruzadas ({labelFonte(linha.fonte)})
+                                  </p>
+                                  <table className="text-xs border-collapse mb-2">
+                                    <tbody>
+                                      {linha.pracas.map((praca, pi) => (
+                                        <tr key={pi}>
+                                          <td className="pr-6 py-0.5 text-gray-400">
+                                            {praca.nome}
+                                            {praca.rodovia && (
+                                              <span className="ml-1 text-gray-600">({praca.rodovia})</span>
+                                            )}
+                                          </td>
+                                          <td className="text-right text-gray-300">{formatBRL(praca.valor)}</td>
+                                        </tr>
+                                      ))}
+                                      <tr className="border-t border-gray-700">
+                                        <td className="pr-6 py-0.5 text-gray-500 font-medium">Total</td>
+                                        <td className="text-right text-gray-300 font-medium">{formatBRL(linha.pedagio)}</td>
+                                      </tr>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              {/* Comparação de provedores */}
+                              {linha.comparacao && (
+                                <div className="mb-4">
+                                  <p className="text-xs text-gray-500 font-medium mb-2">
+                                    Comparação de provedores
+                                  </p>
+                                  {(() => {
+                                    const comp = linha.comparacao!
+                                    const valores = (Object.values(comp) as Array<ComparacaoResult[keyof ComparacaoResult]>)
+                                      .filter((r): r is RotaResult => !!r && 'km' in r && (r as RotaResult).pedagio > 0)
+                                      .map(r => r.pedagio)
+                                    const minP = valores.length > 0 ? Math.min(...valores) : 0
+                                    const maxP = valores.length > 0 ? Math.max(...valores) : 0
+                                    const diverge = valores.length > 1 && minP > 0 && (maxP - minP) / minP > 0.10
+                                    return (
+                                      <table className="text-xs border-collapse w-full max-w-sm">
+                                        <thead>
+                                          <tr className="text-gray-600">
+                                            <th className="text-left pb-1 font-medium">Provedor</th>
+                                            <th className="text-right pb-1 font-medium px-3">KM</th>
+                                            <th className="text-right pb-1 font-medium px-3">Pedágio</th>
+                                            <th className="text-right pb-1 font-medium">Confiança</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {(Object.entries(comp) as [ProviderFonte, ComparacaoResult[keyof ComparacaoResult]][]).map(([nome, res]) => {
+                                            if (!res) return null
+                                            const isError = 'error' in res
+                                            const isDivergente = !isError && diverge && (res as RotaResult).pedagio > 0
+                                            return (
+                                              <tr
+                                                key={nome}
+                                                className={`border-t border-gray-800 ${isDivergente ? 'bg-yellow-900/20' : ''}`}
+                                              >
+                                                <td className="py-1 pr-3 text-gray-400">{labelFonte(nome)}</td>
+                                                {isError ? (
+                                                  <td colSpan={3} className="py-1 px-3 text-red-400">{(res as { error: string }).error}</td>
+                                                ) : (
+                                                  <>
+                                                    <td className="py-1 px-3 text-right text-gray-300">{(res as RotaResult).km} km</td>
+                                                    <td className="py-1 px-3 text-right text-gray-300">{formatBRL((res as RotaResult).pedagio)}</td>
+                                                    <td className="py-1 text-right">{badgeConfianca((res as RotaResult).confianca as Confianca)}</td>
+                                                  </>
+                                                )}
+                                              </tr>
+                                            )
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    )
+                                  })()}
+                                </div>
+                              )}
+
+                              <p className="text-xs text-gray-500 mb-3 flex items-center gap-2">
                                 {linha.km} km · Pedágio ref. 6 eixos: {formatBRL(linha.pedagio)}
+                                {linha.confianca && badgeConfianca(linha.confianca as Confianca)}
                               </p>
+
+                              {/* Correção de pedágio */}
+                              {linha.pedagio != null && (
+                                <div className="mb-4">
+                                  {corrigindo === i ? (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-400">Valor real (R$):</span>
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={valorCorrigido}
+                                        onChange={e => setValorCorrigido(e.target.value)}
+                                        onClick={e => e.stopPropagation()}
+                                        className="w-28 px-2 py-1 text-xs bg-gray-700 border border-gray-600 rounded text-white"
+                                        placeholder={String(linha.pedagio)}
+                                      />
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          const v = parseFloat(valorCorrigido)
+                                          if (!isNaN(v) && v >= 0) {
+                                            await salvarCorrecaoPedagio({
+                                              origem: linha.origem,
+                                              destino: linha.destino,
+                                              eixos: linha.eixos,
+                                              valorOriginal: linha.pedagio!,
+                                              valorCorrigido: v,
+                                            })
+                                          }
+                                          setCorrigindo(null)
+                                          setValorCorrigido('')
+                                        }}
+                                        className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition"
+                                      >
+                                        Salvar
+                                      </button>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setCorrigindo(null); setValorCorrigido('') }}
+                                        className="text-xs text-gray-500 hover:text-gray-300 transition"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setCorrigindo(i); setValorCorrigido(String(linha.pedagio)) }}
+                                      className="text-xs text-gray-600 hover:text-blue-400 transition"
+                                    >
+                                      ✎ Corrigir pedágio
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Tabela de variações ANTT */}
                               <table className="text-xs border-collapse">
                                 <thead>
                                   <tr className="text-gray-500">
