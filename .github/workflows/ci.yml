@@ -1,3 +1,4 @@
+# CI pipeline — lint + build on every PR
 name: CI
 
 on:
