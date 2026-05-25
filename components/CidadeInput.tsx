@@ -49,6 +49,16 @@ export function CidadeInput({ value, onChange, placeholder, required, className 
     setSuggestions([])
   }
 
+  async function onBlur() {
+    setOpen(false)
+    if (!value.trim() || /^.+,\s*[A-Z]{2}$/.test(value)) return
+    try {
+      const res = await fetch(`/api/cidades?q=${encodeURIComponent(value)}`)
+      const data: string[] = await res.json()
+      if (data.length > 0) onChange(data[0])
+    } catch {}
+  }
+
   function onKeyDown(e: React.KeyboardEvent) {
     if (!open) return
     if (e.key === 'ArrowDown') {
@@ -72,6 +82,7 @@ export function CidadeInput({ value, onChange, placeholder, required, className 
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={onBlur}
         placeholder={placeholder}
         required={required}
         autoComplete="off"
