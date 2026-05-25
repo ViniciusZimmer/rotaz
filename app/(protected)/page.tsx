@@ -121,6 +121,7 @@ export default function Home() {
   const [dragging, setDragging] = useState(false)
   const [comparando, setComparando] = useState(false)
   const [progressoComparacao, setProgressoComparacao] = useState(0)
+  const [progressoCalculo, setProgressoCalculo] = useState(0)
   const { activeProviders } = useProviderSettings()
 
   function handleQueryParams(origem: string, destino: string, eixos: number) {
@@ -147,21 +148,33 @@ export default function Home() {
     if (!linhas.length) return
     setStatus('calculando')
     setErro('')
+    setProgressoCalculo(0)
 
-    try {
-      const res = await fetch('/api/calcular', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(linhas),
-      })
-      const resultado: LinhaFrete[] = await res.json()
-      setLinhas(resultado)
-      setStatus('pronto')
-      salvarCotacao(resultado, 'padrao').catch(console.error)
-    } catch {
-      setErro('Falha ao calcular. Tente novamente.')
-      setStatus('idle')
+    const current = [...linhas]
+    const resultados = [...linhas]
+
+    for (let i = 0; i < current.length; i++) {
+      resultados[i] = { ...current[i], status: 'calculando' }
+      setLinhas([...resultados])
+      setProgressoCalculo(i + 1)
+
+      try {
+        const res = await fetch('/api/calcular', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify([current[i]]),
+        })
+        const [resultado]: LinhaFrete[] = await res.json()
+        resultados[i] = resultado
+      } catch {
+        resultados[i] = { ...current[i], status: 'erro', erro: 'Falha ao calcular.' }
+      }
+
+      setLinhas([...resultados])
     }
+
+    setStatus('pronto')
+    salvarCotacao(resultados, 'padrao').catch(console.error)
   }
 
   async function exportar() {
@@ -293,7 +306,7 @@ export default function Home() {
               {status === 'calculando' ? (
                 <>
                   <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
-                  Calculando…
+                  Calculando {progressoCalculo}/{linhas.length}…
                 </>
               ) : (
                 'Calcular KM · Pedágio · ANTT'

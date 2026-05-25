@@ -77,9 +77,8 @@ export async function POST(req: NextRequest) {
   const linhas: LinhaFrete[] = await req.json()
   const resultados: LinhaFrete[] = []
 
-  for (let i = 0; i < linhas.length; i++) {
-    resultados.push(await processarLinha(linhas[i]))
-    if (i < linhas.length - 1) await delay(1000)
+  for (const linha of linhas) {
+    resultados.push(await processarLinha(linha))
   }
 
   return NextResponse.json(resultados)
