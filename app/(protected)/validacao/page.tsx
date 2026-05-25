@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProviderFonte, ComparacaoResult, RotaResult } from '@/types/routing'
 import { compararProvedores } from '@/lib/actions/comparar'
@@ -68,15 +68,14 @@ export default function ValidacaoPage() {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
   const [pracasExpandidas, setPracasExpandidas] = useState<Set<string>>(new Set())
-  const [historico, setHistorico] = useState<HistoricoItem[]>([])
-  const { settings, toggle, activeProviders } = useProviderSettings()
-
-  useEffect(() => {
+  const [historico, setHistorico] = useState<HistoricoItem[]>(() => {
     try {
       const stored = sessionStorage.getItem(HISTORICO_KEY)
-      if (stored) setHistorico(JSON.parse(stored))
+      if (stored) return JSON.parse(stored)
     } catch {}
-  }, [])
+    return []
+  })
+  const { settings, toggle, activeProviders } = useProviderSettings()
 
   function salvarHistorico(item: HistoricoItem) {
     setHistorico(prev => {
@@ -106,7 +105,7 @@ export default function ValidacaoPage() {
   function togglePracas(key: string) {
     setPracasExpandidas(prev => {
       const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
+      if (next.has(key)) { next.delete(key) } else { next.add(key) }
       return next
     })
   }
