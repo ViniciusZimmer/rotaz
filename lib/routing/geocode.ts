@@ -1,16 +1,26 @@
 import { COORDS, normalizarChave } from '../google-maps'
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY ?? ''
+const HERE_API_KEY = process.env.HERE_API_KEY ?? ''
+
+async function geocodeHere(cidade: string): Promise<{ lat: number; lng: number } | null> {
+  if (!HERE_API_KEY) return null
+  try {
+    const q = encodeURIComponent(normalizarChave(cidade).replace(/,\s*[a-z]{2}$/, '').trim() + ' brasil')
+    const url = `https://geocode.search.hereapi.com/v1/geocode?q=${q}&in=countryCode:BRA&limit=1&apikey=${HERE_API_KEY}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    const data = await res.json()
+    const pos = data.items?.[0]?.position
+    if (pos) return { lat: pos.lat, lng: pos.lng }
+  } catch {}
+  return null
+}
 
 async function geocodeNominatim(cidade: string): Promise<{ lat: number; lng: number } | null> {
-  // Try normalized form first (removes accents, converts slash, lowercases)
-  // Then fallback to city-only (no UF) for better Nominatim matching
-  const normalized = normalizarChave(cidade)  // e.g. "blumenau, sc"
-  const cityOnly = normalized.replace(/,\s*[a-z]{2}$/, '').trim()  // strip UF → "blumenau"
+  const normalized = normalizarChave(cidade)
+  const cityOnly = normalized.replace(/,\s*[a-z]{2}$/, '').trim()
 
-  const queries = [normalized, cityOnly].filter(Boolean)
-
-  for (const q of queries) {
+  for (const q of [normalized, cityOnly]) {
     try {
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', brasil')}&format=json&limit=1&countrycodes=br`
       const res = await fetch(url, {
@@ -19,9 +29,7 @@ async function geocodeNominatim(cidade: string): Promise<{ lat: number; lng: num
       })
       const data = await res.json()
       if (data?.[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-    } catch {
-      // try next query
-    }
+    } catch {}
   }
   return null
 }
@@ -47,6 +55,10 @@ export async function geocodeCidade(
       }
     } catch {}
   }
+
+  // HERE geocoding (uses same API key as routing, reliable from cloud)
+  const fromHere = await geocodeHere(cidade)
+  if (fromHere) return fromHere
 
   return geocodeNominatim(cidade)
 }
