@@ -19,7 +19,10 @@ export function CidadeInput({ value, onChange, placeholder, required, className 
 
   useEffect(() => {
     clearTimeout(timerRef.current)
-    if (value.length < 2) { setSuggestions([]); setOpen(false); return }
+    if (value.length < 2) {
+      timerRef.current = setTimeout(() => { setSuggestions([]); setOpen(false) }, 0)
+      return () => clearTimeout(timerRef.current)
+    }
     timerRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/cidades?q=${encodeURIComponent(value)}`)

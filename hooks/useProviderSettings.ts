@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { ProviderFonte } from '@/types/routing'
 
 type ProviderSettings = Partial<Record<ProviderFonte, boolean>>
@@ -13,14 +13,13 @@ const DEFAULTS: ProviderSettings = {
 }
 
 export function useProviderSettings() {
-  const [settings, setSettings] = useState<ProviderSettings>(DEFAULTS)
-
-  useEffect(() => {
+  const [settings, setSettings] = useState<ProviderSettings>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) setSettings({ ...DEFAULTS, ...JSON.parse(stored) })
+      if (stored) return { ...DEFAULTS, ...JSON.parse(stored) }
     } catch {}
-  }, [])
+    return DEFAULTS
+  })
 
   function toggle(fonte: ProviderFonte) {
     setSettings(prev => {
