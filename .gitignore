@@ -51,3 +51,6 @@ skills-lock.json
 
 # Uploads do usuário (não fazem parte do codebase)
 public/MOdelo*
+
+# clerk configuration (can include secrets)
+/.clerk/
