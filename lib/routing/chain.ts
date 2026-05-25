@@ -44,6 +44,9 @@ export async function calcularRotaComChain(
 
   const order = getOrder()
 
+  // Track best km even when provider has no pedagio data (e.g. HERE returns real km but pedagio=0)
+  let bestKm = 0
+
   for (const name of order) {
     const provider = ALL_PROVIDERS[name as keyof typeof ALL_PROVIDERS]
     if (!provider) continue
@@ -59,6 +62,8 @@ export async function calcularRotaComChain(
         console.warn(`[chain] ${name} retornou km=0, tentando próximo`)
         continue
       }
+
+      if (result.km > bestKm) bestKm = result.km
 
       if (result.pedagio <= 0 && name !== 'estimativa') {
         console.warn(`[chain] ${name} retornou pedagio=0, tentando próximo`)
@@ -79,5 +84,7 @@ export async function calcularRotaComChain(
     }
   }
 
-  return { km: 500, pedagio: getPedagio(origem, destino, 500, eixos), fonte: 'estimativa', confianca: 'baixa' }
+  // All providers failed for pedagio — use best km found (from HERE/TomTom/etc) with estimate
+  const km = bestKm > 0 ? bestKm : 500
+  return { km, pedagio: getPedagio(origem, destino, km, eixos), fonte: 'estimativa', confianca: 'baixa' }
 }

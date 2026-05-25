@@ -13,7 +13,10 @@ async function geocodeNominatim(cidade: string): Promise<{ lat: number; lng: num
   for (const q of queries) {
     try {
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', brasil')}&format=json&limit=1&countrycodes=br`
-      const res = await fetch(url, { headers: { 'User-Agent': 'rotaz-frete/1.0' } })
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'rotaz-frete/1.0 (viniciuszimmer92@gmail.com)' },
+        signal: AbortSignal.timeout(8000),
+      })
       const data = await res.json()
       if (data?.[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
     } catch {
