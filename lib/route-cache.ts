@@ -56,6 +56,11 @@ export function getCached(
   return entry
 }
 
+export function clearCache(): void {
+  mem = new Map()
+  persist()
+}
+
 export function setCached(
   origem: string,
   destino: string,

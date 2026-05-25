@@ -177,6 +177,10 @@ export default function Home() {
     salvarCotacao(resultados, 'padrao').catch(console.error)
   }
 
+  async function limparCache() {
+    await fetch('/api/cache', { method: 'DELETE' })
+  }
+
   async function exportar() {
     const res = await fetch('/api/exportar', {
       method: 'POST',
@@ -341,6 +345,14 @@ export default function Home() {
                 Exportar Excel ↓
               </button>
             )}
+
+            <button
+              onClick={limparCache}
+              title="Limpa o cache de rotas — próximas consultas batem nas APIs"
+              className="bg-gray-800 hover:bg-gray-700 text-slate-500 hover:text-slate-300 text-xs px-3 py-2 rounded transition-colors border border-gray-700"
+            >
+              Limpar cache
+            </button>
 
             {status === 'pronto' && (
               <span className="text-sm text-slate-500 ml-auto">
