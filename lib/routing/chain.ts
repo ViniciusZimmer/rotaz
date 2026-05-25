@@ -4,6 +4,7 @@ import { TomTomProvider } from './tomtom'
 import { RotasBrasilProvider } from './rotas-brasil'
 import { HaversineProvider } from './haversine'
 import { getCached, setCached } from '../route-cache'
+import { getPedagio } from '../pedagio'
 
 const HERE = new HereProvider()
 const TOMTOM = new TomTomProvider()
@@ -78,5 +79,5 @@ export async function calcularRotaComChain(
     }
   }
 
-  return { km: 500, pedagio: 0, fonte: 'estimativa', confianca: 'baixa' }
+  return { km: 500, pedagio: getPedagio(origem, destino, 500, eixos), fonte: 'estimativa', confianca: 'baixa' }
 }

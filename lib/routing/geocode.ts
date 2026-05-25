@@ -3,16 +3,24 @@ import { COORDS, normalizarChave } from '../google-maps'
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY ?? ''
 
 async function geocodeNominatim(cidade: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const q = encodeURIComponent(cidade + ', Brasil')
-    const url = `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1&countrycodes=br`
-    const res = await fetch(url, { headers: { 'User-Agent': 'rotaz-frete/1.0' } })
-    const data = await res.json()
-    if (!data?.[0]) return null
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
-  } catch {
-    return null
+  // Try normalized form first (removes accents, converts slash, lowercases)
+  // Then fallback to city-only (no UF) for better Nominatim matching
+  const normalized = normalizarChave(cidade)  // e.g. "blumenau, sc"
+  const cityOnly = normalized.replace(/,\s*[a-z]{2}$/, '').trim()  // strip UF → "blumenau"
+
+  const queries = [normalized, cityOnly].filter(Boolean)
+
+  for (const q of queries) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', brasil')}&format=json&limit=1&countrycodes=br`
+      const res = await fetch(url, { headers: { 'User-Agent': 'rotaz-frete/1.0' } })
+      const data = await res.json()
+      if (data?.[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
+    } catch {
+      // try next query
+    }
   }
+  return null
 }
 
 export async function geocodeCidade(

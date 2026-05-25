@@ -36,12 +36,10 @@ export class HaversineProvider implements RoutingProvider {
 
     // Geocode both cities (COORDS → Google Geocoding → Nominatim) then haversine × 1.35
     const [c1, c2] = await Promise.all([geocodeCidade(origem), geocodeCidade(destino)])
-    if (c1 && c2) {
-      const km = Math.round(haversineKm(c1.lat, c1.lng, c2.lat, c2.lng) * 1.35)
-      const pedagio = getPedagio(origem, destino, km, eixos)
-      return { km, pedagio, fonte: 'estimativa', confianca: 'baixa' }
-    }
-
-    return { km: 500, pedagio: 0, fonte: 'estimativa', confianca: 'baixa' }
+    const km = (c1 && c2)
+      ? Math.round(haversineKm(c1.lat, c1.lng, c2.lat, c2.lng) * 1.35)
+      : 500
+    const pedagio = getPedagio(origem, destino, km, eixos)
+    return { km, pedagio, fonte: 'estimativa', confianca: 'baixa' }
   }
 }
